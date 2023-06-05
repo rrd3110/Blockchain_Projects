@@ -1,0 +1,76 @@
+# Load the csv file from local drive to Google Colab
+from google.colab import files
+uploaded = files.upload()
+
+# import required libraries
+import numpy as np
+import pandas as pd
+from sklearn.preprocessing import MinMaxScaler
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense, Dropout
+
+# Load the cryptocurrency price data
+data = pd.read_csv('crypto_data.csv')  # Replace 'crypto_data.csv' with your dataset file name
+
+# Preprocess the data
+data = data.sort_values('Date')
+data = data.set_index('Date')
+data = data[['Close']]  # Consider only the 'Close' price for simplicity
+data = data.dropna()
+
+# Normalize the data
+scaler = MinMaxScaler(feature_range=(0, 1))
+data_scaled = scaler.fit_transform(data)
+
+# Split the data into training and testing sets
+train_size = int(len(data_scaled) * 0.8)
+test_size = len(data_scaled) - train_size
+train_data = data_scaled[:train_size]
+test_data = data_scaled[train_size:]
+
+# Create sequences of data for LSTM training
+def create_sequences(data, sequence_length):
+    X = []
+    y = []
+    for i in range(len(data) - sequence_length):
+        X.append(data[i:i+sequence_length])
+        y.append(data[i+sequence_length])
+    return np.array(X), np.array(y)
+
+sequence_length = 30  # Adjust the sequence length as needed
+X_train, y_train = create_sequences(train_data, sequence_length)
+X_test, y_test = create_sequences(test_data, sequence_length)
+
+# Build the LSTM model
+model = Sequential()
+model.add(LSTM(units=50, return_sequences=True, input_shape=(X_train.shape[1], 1)))
+model.add(Dropout(0.2))
+model.add(LSTM(units=50, return_sequences=True))
+model.add(Dropout(0.2))
+model.add(LSTM(units=50))
+model.add(Dropout(0.2))
+model.add(Dense(units=1))
+
+model.compile(optimizer='adam', loss='mean_squared_error')
+
+# Train the model
+model.fit(X_train, y_train, epochs=50, batch_size=32)
+
+# Make predictions
+train_predictions = model.predict(X_train)
+test_predictions = model.predict(X_test)
+
+# Inverse scale the predictions
+train_predictions = scaler.inverse_transform(train_predictions)
+y_train = scaler.inverse_transform(y_train)
+test_predictions = scaler.inverse_transform(test_predictions)
+y_test = scaler.inverse_transform(y_test)
+
+# Evaluate the model (optional)
+train_rmse = np.sqrt(np.mean((train_predictions - y_train)**2))
+test_rmse = np.sqrt(np.mean((test_predictions - y_test)**2))
+print('Train RMSE:', train_rmse)
+print('Test RMSE:', test_rmse)
+
+
+
